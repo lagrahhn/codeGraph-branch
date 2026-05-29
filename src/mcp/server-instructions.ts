@@ -68,4 +68,14 @@ of calls; a grep/read exploration is dozens.
 - Index lags file writes by ~1 second.
 - Cross-file resolution is best-effort name matching; ambiguous calls may return multiple candidates.
 - No live correctness validation — that's still the TypeScript compiler / test suite / linter's job. Codegraph supplements those with structural context they don't have.
+
+## Branch management
+
+CodeGraph stores a separate index for each git branch under \`.codegraph/branches/\`. When you open or init a project, the current branch's index is used automatically. Use the \`branch\` CLI command to manage cached indexes:
+
+- \`codegraph branch\` — show which branch is indexed and list cached branches
+- \`codegraph branch switch <name>\` — load (or create) a specific branch's index
+- \`codegraph branch prune <name>\` — remove a cached branch index
+
+This is useful when switching between branches during development — the index loads instantly without re-parsing files.
 `;

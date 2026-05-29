@@ -195,6 +195,17 @@ function formatNumber(n: number): string {
 }
 
 /**
+ * Format bytes to human readable size
+ */
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+/**
  * Format duration in milliseconds to human readable
  */
 function formatDuration(ms: number): string {
@@ -701,6 +712,7 @@ program
         console.log(JSON.stringify({
           initialized: true,
           projectPath,
+          branch: cg.getCurrentBranch(),
           fileCount: stats.fileCount,
           nodeCount: stats.nodeCount,
           edgeCount: stats.edgeCount,
@@ -728,6 +740,12 @@ program
       console.log(chalk.cyan('Project:'), projectPath);
       if (worktreeMismatch) {
         warn(worktreeMismatchWarning(worktreeMismatch));
+      }
+
+      // Branch info
+      const branch = cg.getCurrentBranch();
+      if (branch) {
+        console.log(chalk.cyan('Branch:'), chalk.green(branch));
       }
       console.log();
 
@@ -1701,6 +1719,224 @@ program
       error(err instanceof Error ? err.message : String(err));
       process.exit(1);
     }
+  });
+
+// =============================================================================
+// Branch Management
+// =============================================================================
+
+/**
+ * codegraph branch
+ *
+ * Show current branch and list all cached branch indexes.
+ * Subcommands:
+ *   codegraph branch                  Show status
+ *   codegraph branch switch <name>    Switch to a branch index
+ *   codegraph branch prune [name]     Remove a branch index (or all except current)
+ */
+program
+  .command('branch [action] [name]')
+  .description('Manage per-branch indexes. Actions: switch, prune (no action = show status)')
+  .option('-a, --all', 'With prune: remove all non-active branches')
+  .option('-y, --yes', 'Skip confirmation prompts')
+  .option('-j, --json', 'Output as JSON')
+  .action(async (action: string | undefined, name: string | undefined, opts: { all?: boolean; yes?: boolean; json?: boolean }) => {
+    const projectPath = resolveProjectPath();
+
+    if (!isInitialized(projectPath)) {
+      error('CodeGraph not initialized. Run "codegraph init" first.');
+      process.exit(1);
+    }
+
+    const {
+      getActiveBranch,
+      listBranchDbs,
+      removeBranchDb,
+      getBranchSummary,
+      sanitizeBranchName,
+    } = await import('../branch');
+
+    // === Show status (no action) ===
+    if (!action || action === 'status') {
+      const summary = getBranchSummary(projectPath);
+
+      if (opts.json) {
+        console.log(JSON.stringify({
+          currentGitBranch: summary.currentBranch,
+          activeIndexBranch: summary.activeBranch,
+          cachedBranches: summary.cachedBranches.map(b => ({
+            name: b.dirName,
+            sizeBytes: b.sizeBytes,
+            lastModified: new Date(b.lastModified).toISOString(),
+            isActive: b.isActive,
+          })),
+          totalSizeBytes: summary.totalSizeBytes,
+          maxBranches: summary.maxBranches,
+        }));
+        return;
+      }
+
+      console.log(chalk.bold('\nCodeGraph Branch Status\n'));
+
+      if (summary.currentBranch) {
+        console.log(`  ${chalk.cyan('Git branch:')}      ${chalk.green(summary.currentBranch)}`);
+      } else {
+        console.log(`  ${chalk.cyan('Git branch:')}      ${chalk.yellow('detached HEAD')}`);
+      }
+
+      if (summary.activeBranch) {
+        console.log(`  ${chalk.cyan('Active index:')}    ${chalk.green(summary.activeBranch)}`);
+      } else {
+        console.log(`  ${chalk.cyan('Active index:')}    ${chalk.gray('none')}`);
+      }
+
+      console.log(`  ${chalk.cyan('Cached branches:')} ${summary.cachedBranches.length} / ${summary.maxBranches} max`);
+      console.log(`  ${chalk.cyan('Total size:')}      ${formatBytes(summary.totalSizeBytes)}`);
+
+      if (summary.cachedBranches.length > 0) {
+        console.log(chalk.bold('\n  Cached Branches:\n'));
+        console.log('  Branch                          Size       Last Modified');
+        console.log('  ' + '-'.repeat(60));
+
+        for (const b of summary.cachedBranches) {
+          const marker = b.isActive ? chalk.green(' * ') : '   ';
+          const size = formatBytes(b.sizeBytes).padEnd(10);
+          const date = new Date(b.lastModified).toLocaleString();
+          console.log(`  ${marker}${b.dirName.padEnd(30)} ${size} ${date}`);
+        }
+      }
+
+      console.log();
+      return;
+    }
+
+    // === Switch branch ===
+    if (action === 'switch') {
+      if (!name) {
+        error('Usage: codegraph branch switch <branch-name>');
+        process.exit(1);
+      }
+
+      const branch = name;
+      const currentActive = getActiveBranch(projectPath);
+
+      if (currentActive === branch) {
+        console.log(chalk.green(`\nAlready on branch "${branch}"\n`));
+        return;
+      }
+
+      // Check if branch DB exists BEFORE opening (open auto-creates if missing)
+      const { branchDbExists } = await import('../branch');
+      const hasExisting = branchDbExists(projectPath, branch);
+
+      const { default: CodeGraph } = await loadCodeGraph();
+      const cg = await CodeGraph.open(projectPath);
+
+      try {
+        if (hasExisting) {
+          console.log(chalk.cyan(`\nSwitching to cached branch "${branch}"...\n`));
+        } else {
+          console.log(chalk.yellow(`\nBranch "${branch}" has no cached index. Creating new index...\n`));
+        }
+
+        const newCg = await cg.switchBranch(branch);
+
+        if (!hasExisting) {
+          // New branch needs indexing
+          console.log(chalk.cyan('Indexing...'));
+          const progress = createShimmerProgress();
+          const result = await newCg.indexAll({
+            onProgress: progress.onProgress,
+          });
+
+          if (result.success) {
+            console.log(chalk.green(`\nIndexed ${result.filesIndexed} files in ${(result.durationMs / 1000).toFixed(1)}s`));
+            console.log(`  ${result.nodesCreated} nodes, ${result.edgesCreated} edges\n`);
+          } else {
+            error('Indexing failed');
+          }
+        } else {
+          console.log(chalk.green(`Switched to branch "${branch}" (cached index loaded)\n`));
+        }
+
+        newCg.close();
+      } catch (err) {
+        cg.close();
+        error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+      }
+      return;
+    }
+
+    // === Prune branch ===
+    if (action === 'prune') {
+      const currentActive = getActiveBranch(projectPath);
+
+      if (opts.all) {
+        // Prune all non-active branches
+        const branches = listBranchDbs(projectPath);
+        const toPrune = branches.filter(b => !b.isActive);
+
+        if (toPrune.length === 0) {
+          console.log(chalk.green('\nNo branches to prune.\n'));
+          return;
+        }
+
+        if (!opts.yes) {
+          console.log(chalk.yellow(`\nAbout to prune ${toPrune.length} branch(es):`));
+          for (const b of toPrune) {
+            console.log(`  - ${b.dirName} (${formatBytes(b.sizeBytes)})`);
+          }
+          console.log(chalk.dim('\nUse --yes to confirm.\n'));
+          return;
+        }
+
+        let pruned = 0;
+        for (const b of toPrune) {
+          if (removeBranchDb(projectPath, b.dirName)) {
+            pruned++;
+          }
+        }
+        console.log(chalk.green(`\nPruned ${pruned} branch(es).\n`));
+        return;
+      }
+
+      if (!name) {
+        error('Usage: codegraph branch prune <branch-name> or codegraph branch prune --all');
+        process.exit(1);
+      }
+
+      if (currentActive === name) {
+        error(`Cannot prune the currently active branch "${name}"`);
+        process.exit(1);
+      }
+
+      const sanitized = sanitizeBranchName(name);
+      const branches = listBranchDbs(projectPath);
+      const target = branches.find(b => b.dirName === sanitized);
+
+      if (!target) {
+        error(`Branch "${name}" not found in cache`);
+        process.exit(1);
+      }
+
+      if (!opts.yes) {
+        console.log(chalk.yellow(`\nAbout to prune branch "${name}" (${formatBytes(target.sizeBytes)})`));
+        console.log(chalk.dim('Use --yes to confirm.\n'));
+        return;
+      }
+
+      if (removeBranchDb(projectPath, name)) {
+        console.log(chalk.green(`\nPruned branch "${name}"\n`));
+      } else {
+        error(`Failed to prune branch "${name}"`);
+        process.exit(1);
+      }
+      return;
+    }
+
+    error(`Unknown branch action: "${action}". Use: switch, prune, or no action for status.`);
+    process.exit(1);
   });
 
 // Parse and run

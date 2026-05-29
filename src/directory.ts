@@ -20,17 +20,39 @@ export function getCodeGraphDir(projectRoot: string): string {
 }
 
 /**
- * Check if a project has been initialized with CodeGraph
- * Requires both .codegraph/ directory AND codegraph.db to exist
+ * Check if a project has been initialized with CodeGraph.
+ *
+ * Returns true if ANY of these exist:
+ * - .codegraph/codegraph.db (legacy single-DB)
+ * - .codegraph/branches/ with at least one branch DB
  */
 export function isInitialized(projectRoot: string): boolean {
   const codegraphDir = getCodeGraphDir(projectRoot);
   if (!fs.existsSync(codegraphDir) || !fs.statSync(codegraphDir).isDirectory()) {
     return false;
   }
-  // Must have codegraph.db, not just .codegraph folder
-  const dbPath = path.join(codegraphDir, 'codegraph.db');
-  return fs.existsSync(dbPath);
+
+  // Legacy: root-level codegraph.db
+  const rootDbPath = path.join(codegraphDir, 'codegraph.db');
+  if (fs.existsSync(rootDbPath)) {
+    return true;
+  }
+
+  // Branch-based: any branch DB exists
+  const branchesDir = path.join(codegraphDir, 'branches');
+  if (fs.existsSync(branchesDir) && fs.statSync(branchesDir).isDirectory()) {
+    const entries = fs.readdirSync(branchesDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const branchDb = path.join(branchesDir, entry.name, 'codegraph.db');
+        if (fs.existsSync(branchDb)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -69,16 +91,24 @@ export function findNearestCodeGraphRoot(startPath: string): string | null {
  */
 export function createDirectory(projectRoot: string): void {
   const codegraphDir = getCodeGraphDir(projectRoot);
-  const dbPath = path.join(codegraphDir, 'codegraph.db');
+  const rootDbPath = path.join(codegraphDir, 'codegraph.db');
 
-  // Only throw if CodeGraph is actually initialized (db exists)
+  // Only throw if CodeGraph is actually initialized (root-level db exists AND no branches dir)
   // .codegraph/ folder alone is fine
-  if (fs.existsSync(dbPath)) {
-    throw new Error(`CodeGraph already initialized in ${projectRoot}`);
+  if (fs.existsSync(rootDbPath)) {
+    // Check if this is a legacy DB that hasn't been migrated yet to branches
+    const branchesDir = path.join(codegraphDir, 'branches');
+    if (!fs.existsSync(branchesDir)) {
+      throw new Error(`CodeGraph already initialized in ${projectRoot}`);
+    }
   }
 
   // Create main directory (if it doesn't exist)
   fs.mkdirSync(codegraphDir, { recursive: true });
+
+  // Create branches subdirectory
+  const branchesDir = path.join(codegraphDir, 'branches');
+  fs.mkdirSync(branchesDir, { recursive: true });
 
   // Create .gitignore inside .codegraph (if it doesn't exist)
   const gitignorePath = path.join(codegraphDir, '.gitignore');
@@ -90,6 +120,12 @@ export function createDirectory(projectRoot: string): void {
 *.db
 *.db-wal
 *.db-shm
+
+# Branch databases
+branches/
+
+# Active branch marker
+active_branch
 
 # Cache
 cache/

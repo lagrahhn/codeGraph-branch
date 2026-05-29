@@ -47,6 +47,18 @@ import { GraphTraverser, GraphQueryManager } from './graph';
 import { ContextBuilder, createContextBuilder } from './context';
 import { Mutex, FileLock } from './utils';
 import { FileWatcher, WatchOptions, PendingFile, LockUnavailableError } from './sync';
+import {
+  getCurrentBranch,
+  getBranchDbPath,
+  branchDbExists,
+  setActiveBranch,
+  migrateRootDbToBranch,
+  ensureBranchesDir,
+  evictOldBranches,
+  listBranchDbs,
+  DEFAULT_MAX_BRANCHES,
+  BranchInfo,
+} from './branch';
 
 // Re-export types for consumers
 export * from './types';
@@ -58,6 +70,14 @@ export {
   CODEGRAPH_DIR,
 } from './directory';
 export { IndexProgress, IndexResult, SyncResult } from './extraction';
+export {
+  getCurrentBranch,
+  getBranchDbPath,
+  branchDbExists,
+  listBranchDbs,
+  DEFAULT_MAX_BRANCHES,
+  BranchInfo,
+} from './branch';
 export { detectLanguage, isLanguageSupported, isGrammarLoaded, getSupportedLanguages, initGrammars, loadGrammarsForLanguages, loadAllGrammars } from './extraction';
 export { ResolutionResult } from './resolution';
 export {
@@ -129,6 +149,9 @@ export class CodeGraph {
   private traverser: GraphTraverser;
   private contextBuilder: ContextBuilder;
 
+  /** The git branch this instance is indexed for, or null if not using branches */
+  private currentBranch: string | null;
+
   // Mutex for preventing concurrent indexing operations (in-process)
   private indexMutex = new Mutex();
 
@@ -141,11 +164,13 @@ export class CodeGraph {
   private constructor(
     db: DatabaseConnection,
     queries: QueryBuilder,
-    projectRoot: string
+    projectRoot: string,
+    currentBranch: string | null = null
   ) {
     this.db = db;
     this.queries = queries;
     this.projectRoot = projectRoot;
+    this.currentBranch = currentBranch;
     this.fileLock = new FileLock(
       path.join(projectRoot, '.codegraph', 'codegraph.lock')
     );
@@ -185,12 +210,32 @@ export class CodeGraph {
     // Create directory structure
     createDirectory(resolvedRoot);
 
+    // Detect current git branch for per-branch DB
+    const branch = getCurrentBranch(resolvedRoot);
+
+    let dbPath: string;
+    if (branch) {
+      // Branch-aware mode: create branch-specific DB
+      ensureBranchesDir(resolvedRoot);
+      dbPath = getBranchDbPath(resolvedRoot, branch);
+      // Ensure branch subdirectory exists
+      const branchDir = require('path').dirname(dbPath);
+      require('fs').mkdirSync(branchDir, { recursive: true });
+    } else {
+      // No git branch detected: use legacy root-level DB
+      dbPath = getDatabasePath(resolvedRoot);
+    }
+
     // Initialize database
-    const dbPath = getDatabasePath(resolvedRoot);
     const db = DatabaseConnection.initialize(dbPath);
     const queries = new QueryBuilder(db.getDb());
 
-    const instance = new CodeGraph(db, queries, resolvedRoot);
+    const instance = new CodeGraph(db, queries, resolvedRoot, branch);
+
+    // Record active branch
+    if (branch) {
+      setActiveBranch(resolvedRoot, branch);
+    }
 
     // Run initial indexing if requested
     if (options.index) {
@@ -214,12 +259,29 @@ export class CodeGraph {
     // Create directory structure
     createDirectory(resolvedRoot);
 
+    // Detect current git branch for per-branch DB
+    const branch = getCurrentBranch(resolvedRoot);
+
+    let dbPath: string;
+    if (branch) {
+      ensureBranchesDir(resolvedRoot);
+      dbPath = getBranchDbPath(resolvedRoot, branch);
+      const branchDir = require('path').dirname(dbPath);
+      require('fs').mkdirSync(branchDir, { recursive: true });
+    } else {
+      dbPath = getDatabasePath(resolvedRoot);
+    }
+
     // Initialize database
-    const dbPath = getDatabasePath(resolvedRoot);
     const db = DatabaseConnection.initialize(dbPath);
     const queries = new QueryBuilder(db.getDb());
 
-    return new CodeGraph(db, queries, resolvedRoot);
+    // Record active branch
+    if (branch) {
+      setActiveBranch(resolvedRoot, branch);
+    }
+
+    return new CodeGraph(db, queries, resolvedRoot, branch);
   }
 
   /**
@@ -233,7 +295,7 @@ export class CodeGraph {
     await initGrammars();
     const resolvedRoot = path.resolve(projectRoot);
 
-    // Check if initialized
+    // Check if initialized (supports both legacy and branch-based)
     if (!isInitialized(resolvedRoot)) {
       throw new Error(`CodeGraph not initialized in ${resolvedRoot}. Run init() first.`);
     }
@@ -244,12 +306,46 @@ export class CodeGraph {
       throw new Error(`Invalid CodeGraph directory: ${validation.errors.join(', ')}`);
     }
 
+    // Detect current git branch
+    const branch = getCurrentBranch(resolvedRoot);
+
+    let dbPath: string;
+    if (branch) {
+      // Branch-aware mode
+      if (!branchDbExists(resolvedRoot, branch)) {
+        // Branch DB doesn't exist — try migrating from root-level DB
+        const migrated = migrateRootDbToBranch(resolvedRoot, branch);
+        if (!migrated) {
+          // No root DB either — this is a new branch, needs full index
+          ensureBranchesDir(resolvedRoot);
+          dbPath = getBranchDbPath(resolvedRoot, branch);
+          const branchDir = require('path').dirname(dbPath);
+          require('fs').mkdirSync(branchDir, { recursive: true });
+          const db = DatabaseConnection.initialize(dbPath);
+          const queries = new QueryBuilder(db.getDb());
+          const instance = new CodeGraph(db, queries, resolvedRoot, branch);
+          setActiveBranch(resolvedRoot, branch);
+          // Evict old branches if needed
+          evictOldBranches(resolvedRoot, DEFAULT_MAX_BRANCHES);
+          return instance;
+        }
+      }
+      dbPath = getBranchDbPath(resolvedRoot, branch);
+    } else {
+      // No branch detected — use legacy root-level DB
+      dbPath = getDatabasePath(resolvedRoot);
+    }
+
     // Open database
-    const dbPath = getDatabasePath(resolvedRoot);
     const db = DatabaseConnection.open(dbPath);
     const queries = new QueryBuilder(db.getDb());
 
-    const instance = new CodeGraph(db, queries, resolvedRoot);
+    const instance = new CodeGraph(db, queries, resolvedRoot, branch);
+
+    // Record active branch
+    if (branch) {
+      setActiveBranch(resolvedRoot, branch);
+    }
 
     // Sync if requested
     if (options.sync) {
@@ -265,7 +361,7 @@ export class CodeGraph {
   static openSync(projectRoot: string): CodeGraph {
     const resolvedRoot = path.resolve(projectRoot);
 
-    // Check if initialized
+    // Check if initialized (supports both legacy and branch-based)
     if (!isInitialized(resolvedRoot)) {
       throw new Error(`CodeGraph not initialized in ${resolvedRoot}. Run init() first.`);
     }
@@ -276,12 +372,40 @@ export class CodeGraph {
       throw new Error(`Invalid CodeGraph directory: ${validation.errors.join(', ')}`);
     }
 
+    // Detect current git branch
+    const branch = getCurrentBranch(resolvedRoot);
+
+    let dbPath: string;
+    if (branch) {
+      if (!branchDbExists(resolvedRoot, branch)) {
+        const migrated = migrateRootDbToBranch(resolvedRoot, branch);
+        if (!migrated) {
+          ensureBranchesDir(resolvedRoot);
+          dbPath = getBranchDbPath(resolvedRoot, branch);
+          const branchDir = require('path').dirname(dbPath);
+          require('fs').mkdirSync(branchDir, { recursive: true });
+          const db = DatabaseConnection.initialize(dbPath);
+          const queries = new QueryBuilder(db.getDb());
+          setActiveBranch(resolvedRoot, branch);
+          evictOldBranches(resolvedRoot, DEFAULT_MAX_BRANCHES);
+          return new CodeGraph(db, queries, resolvedRoot, branch);
+        }
+      }
+      dbPath = getBranchDbPath(resolvedRoot, branch);
+    } else {
+      dbPath = getDatabasePath(resolvedRoot);
+    }
+
     // Open database
-    const dbPath = getDatabasePath(resolvedRoot);
     const db = DatabaseConnection.open(dbPath);
     const queries = new QueryBuilder(db.getDb());
 
-    return new CodeGraph(db, queries, resolvedRoot);
+    // Record active branch
+    if (branch) {
+      setActiveBranch(resolvedRoot, branch);
+    }
+
+    return new CodeGraph(db, queries, resolvedRoot, branch);
   }
 
   /**
@@ -306,6 +430,90 @@ export class CodeGraph {
    */
   getProjectRoot(): string {
     return this.projectRoot;
+  }
+
+  // ===========================================================================
+  // Branch Management
+  // ===========================================================================
+
+  /**
+   * Get the git branch this instance is indexed for
+   */
+  getCurrentBranch(): string | null {
+    return this.currentBranch;
+  }
+
+  /**
+   * Switch to a different branch's index.
+   *
+   * If the target branch has a cached database, it is loaded instantly.
+   * If not, a new empty database is created (the caller should invoke
+   * `indexAll()` or `sync()` afterward to populate it).
+   *
+   * The current instance is closed and a new one is returned.
+   *
+   * @param branch - Target branch name
+   * @returns A new CodeGraph instance for the target branch
+   */
+  async switchBranch(branch: string): Promise<CodeGraph> {
+    const resolvedRoot = this.projectRoot;
+
+    // Already on this branch
+    if (this.currentBranch === branch) {
+      return this;
+    }
+
+    // Close current connection
+    this.close();
+
+    // Ensure branches directory exists
+    ensureBranchesDir(resolvedRoot);
+
+    const dbPath = getBranchDbPath(resolvedRoot, branch);
+
+    if (branchDbExists(resolvedRoot, branch)) {
+      // Branch DB exists — open it
+      const db = DatabaseConnection.open(dbPath);
+      const queries = new QueryBuilder(db.getDb());
+      setActiveBranch(resolvedRoot, branch);
+      evictOldBranches(resolvedRoot, DEFAULT_MAX_BRANCHES);
+      return new CodeGraph(db, queries, resolvedRoot, branch);
+    } else {
+      // Branch DB doesn't exist — create a new one
+      const branchDir = require('path').dirname(dbPath);
+      require('fs').mkdirSync(branchDir, { recursive: true });
+      const db = DatabaseConnection.initialize(dbPath);
+      const queries = new QueryBuilder(db.getDb());
+      setActiveBranch(resolvedRoot, branch);
+      evictOldBranches(resolvedRoot, DEFAULT_MAX_BRANCHES);
+      return new CodeGraph(db, queries, resolvedRoot, branch);
+    }
+  }
+
+  /**
+   * Check if a branch has a cached index database
+   */
+  hasBranchDb(branch: string): boolean {
+    return branchDbExists(this.projectRoot, branch);
+  }
+
+  /**
+   * Get information about all cached branch databases
+   */
+  listBranches(): BranchInfo[] {
+    return listBranchDbs(this.projectRoot);
+  }
+
+  /**
+   * Prune (delete) a specific branch's cached index database.
+   * Cannot prune the currently active branch.
+   */
+  pruneBranch(branch: string): boolean {
+    if (this.currentBranch === branch) {
+      throw new Error('Cannot prune the currently active branch');
+    }
+    const { removeBranchDb } = require('./branch');
+    return removeBranchDb(this.projectRoot, branch);
   }
 
   // ===========================================================================

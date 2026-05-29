@@ -9,6 +9,10 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### New Features
+
+- Per-branch index databases: CodeGraph now stores a separate index for each git branch under `.codegraph/branches/`, so switching branches loads the cached index instantly instead of re-scanning and re-parsing files. Use `codegraph branch` to see cached branches, `codegraph branch switch <name>` to load a specific branch's index, and `codegraph branch prune` to clean up old indexes.
+
 ## [0.9.7] - 2026-05-28
 
 ### New Features
