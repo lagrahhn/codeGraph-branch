@@ -27,6 +27,8 @@
 
 </div>
 
+[English](README.md) | [中文](README.zh-CN.md)
+
 ## Get Started
 
 **No Node.js required** — one command grabs the right build for your OS:
