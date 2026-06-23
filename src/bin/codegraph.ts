@@ -1939,6 +1939,17 @@ program
     process.exit(1);
   });
 
+// =============================================================================
+// Branch Optimization Commands
+// =============================================================================
+
+// Import and register branch optimization commands
+import('./branch-optimization').then(({ registerBranchOptimizationCommands }) => {
+  registerBranchOptimizationCommands(program);
+}).catch((err) => {
+  console.error('Failed to load branch optimization commands:', err);
+});
+
 // Parse and run
 program.parse();
 

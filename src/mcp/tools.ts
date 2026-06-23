@@ -1713,12 +1713,13 @@ export class ToolHandler {
       return this.textResult(this.truncateOutput(lines.join('\n') + fromMatches.note + toMatches.note));
     }
 
+    const tracePath = path;
     const lines: string[] = [
       `## Trace: ${from} → ${to}`,
       '',
-      `Full execution path below — ${path.length} hops, each with its body, plus what the destination calls. This is the complete flow; answer from it.`,
+      `Full execution path below — ${tracePath.length} hops, each with its body, plus what the destination calls. This is the complete flow; answer from it.`,
       '',
-      `${path.length} hops:`,
+      `${tracePath.length} hops:`,
       '',
     ];
     // Inline what each hop needs so the agent doesn't Read/Grep to get it: the
@@ -1727,8 +1728,8 @@ export class ToolHandler {
     // versions inlined only the call-site line, which left agents calling explore
     // or Read for the bodies — the exact follow-up the ablation experiment measured.
     const fileCache = new Map<string, string[]>();
-    for (let i = 0; i < path.length; i++) {
-      const step = path[i]!;
+    for (let i = 0; i < tracePath.length; i++) {
+      const step = tracePath[i]!;
       if (step.edge) {
         const synth = this.synthEdgeNote(step.edge);
         if (synth) {
@@ -1739,7 +1740,7 @@ export class ToolHandler {
           }
         } else {
           // The call happens in the PREVIOUS hop's file at edge.line.
-          const prev = path[i - 1];
+          const prev = tracePath[i - 1];
           const ref = prev && step.edge.line ? `${prev.node.filePath}:${step.edge.line}` : undefined;
           const callSrc = this.sourceLineAt(cg, ref, fileCache);
           lines.push(`   ↓ ${step.edge.kind}${step.edge.line ? `@${step.edge.line}` : ''}${callSrc ? `   ${callSrc}` : ''}`);
@@ -1753,9 +1754,9 @@ export class ToolHandler {
     // for exactly this (e.g. renderStaticScene → _renderStaticScene → the canvas draw),
     // so inlining the destination's callees is what actually stops the investigation —
     // sufficiency, not a "don't explore" instruction.
-    const dest = path[path.length - 1]!.node;
+    const dest = tracePath[tracePath.length - 1]!.node;
     const destCallees = cg.getCallees(dest.id)
-      .filter(c => !path.some(p => p.node.id === c.node.id))
+      .filter(c => !tracePath.some(p => p.node.id === c.node.id))
       .slice(0, 6);
     if (destCallees.length > 0) {
       lines.push('', `### \`${dest.name}\` then calls (the destination's immediate work):`);

@@ -321,13 +321,14 @@ function inferJavaFieldReceiverType(
   }
   if (!enclosing) return null;
 
-  const enclosingEnd = enclosing.endLine ?? enclosing.startLine;
+  const enclosing_ = enclosing;
+  const enclosingEnd = enclosing_.endLine ?? enclosing_.startLine;
   const field = inFile.find(
     (n) =>
       n.kind === 'field' &&
       n.name === receiverName &&
       n.language === ref.language &&
-      n.startLine >= enclosing.startLine &&
+      n.startLine >= enclosing_.startLine &&
       (n.endLine ?? n.startLine) <= enclosingEnd,
   );
   if (!field || !field.signature) return null;
