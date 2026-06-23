@@ -1950,6 +1950,13 @@ import('./branch-optimization').then(({ registerBranchOptimizationCommands }) =>
   console.error('Failed to load branch optimization commands:', err);
 });
 
+// Import and register branch storage mode commands
+import('./branch-storage-mode').then(({ registerBranchStorageModeCommands }) => {
+  registerBranchStorageModeCommands(program);
+}).catch((err) => {
+  console.error('Failed to load branch storage mode commands:', err);
+});
+
 // Parse and run
 program.parse();
 
