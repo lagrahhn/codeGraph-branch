@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build win32-x64 bundle
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-bundle-win.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codegraph-win32-x64
+          path: release/codegraph-win32-x64.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build linux-x64 bundle
+        run: bash scripts/build-bundle.sh linux-x64
+      - name: Pack npm source tarball
+        run: npm run build && npm pack --pack-destination release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codegraph-linux-x64
+          path: |
+            release/codegraph-linux-x64.tar.gz
+            release/colbymchenry-codegraph-*.tgz
+
+  publish:
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - id: version
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            V=$(node -p "require('./package.json').version")
+            echo "tag=v${V}" >> "$GITHUB_OUTPUT"
+            echo "version=${V}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Write release notes
+        run: |
+          node scripts/extract-release-notes.mjs "${{ steps.version.outputs.version }}" > release-notes.md || {
+            echo "CodeGraph v${{ steps.version.outputs.version }}" > release-notes.md
+          }
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: CodeGraph v${{ steps.version.outputs.version }}
+          body_path: release-notes.md
+          files: |
+            artifacts/codegraph-win32-x64/codegraph-win32-x64.zip
+            artifacts/codegraph-linux-x64/codegraph-linux-x64.tar.gz
+            artifacts/codegraph-linux-x64/colbymchenry-codegraph-*.tgz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -9,6 +9,8 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.9] - 2026-06-30
+
 ### New Features
 
 - CLI help now shows bilingual English and Chinese descriptions for every command, so `codegraph --help` is easier to read for Chinese-speaking users.
