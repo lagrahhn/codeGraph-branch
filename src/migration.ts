@@ -14,14 +14,12 @@ import { computeFileHash } from './utils/content-hash';
 import {
   sanitizeBranchName,
   listBranchDbs,
-  getBranchDbPath,
   BranchInfo,
 } from './branch';
 import {
   Node,
   Edge,
   FileRecord,
-  Language,
 } from './types';
 
 /**
@@ -98,6 +96,7 @@ export async function migrateToSharedStorage(
     // Migrate each branch
     for (let i = 0; i < oldBranches.length; i++) {
       const branchInfo = oldBranches[i];
+      if (!branchInfo) continue;
 
       options.onProgress?.({
         phase: 'migrating',
@@ -169,7 +168,7 @@ export async function migrateToSharedStorage(
  * Migrate a single branch database
  */
 async function migrateBranch(
-  projectRoot: string,
+  _projectRoot: string,
   branchInfo: BranchInfo,
   sharedQueries: SharedStorageQueries,
   dryRun: boolean
@@ -179,20 +178,19 @@ async function migrateBranch(
   filesMigrated: number;
 }> {
   // Open old branch database
-  const oldDb = new DatabaseConnection(branchInfo.dbPath);
-  oldDb.open();
+  const oldDb = DatabaseConnection.open(branchInfo.dbPath);
 
   try {
-    // Get all nodes from old database
-    const nodes = oldDb.query<Node>('SELECT * FROM nodes');
-    const edges = oldDb.query<Edge>('SELECT * FROM edges');
-    const files = oldDb.query<FileRecord>('SELECT * FROM files');
+    const db = oldDb.getDb();
+    const nodes = db.prepare('SELECT * FROM nodes').all() as Node[];
+    const edges = db.prepare('SELECT * FROM edges').all() as Edge[];
+    const files = db.prepare('SELECT * FROM files').all() as FileRecord[];
 
     if (!dryRun) {
       // Insert nodes into shared storage
       for (const node of nodes) {
         // Find which file this node belongs to
-        const file = files.find(f => f.path === node.filePath);
+        const file = files.find((f: FileRecord) => f.path === node.filePath);
         if (!file) continue;
 
         const contentHash = computeFileHash(node.filePath, ''); // TODO: Get actual content

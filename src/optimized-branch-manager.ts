@@ -8,11 +8,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-import { getCodeGraphDir } from './directory';
 import { DatabaseConnection } from './db';
 import { SharedStorageQueries } from './db/shared-queries';
 import { computeFileHash } from './utils/content-hash';
-import { sanitizeBranchName, getCurrentBranch } from './branch';
+import { getCurrentBranch } from './branch';
 import {
   Node,
   Edge,
@@ -55,23 +54,11 @@ export interface BranchOptions {
  */
 export class OptimizedBranchManager {
   private projectRoot: string;
-  private db: DatabaseConnection;
   private queries: SharedStorageQueries;
   private currentBranch: string | null = null;
 
-  // Cache for recently accessed branches
-  private branchCache = new Map<string, {
-    nodes: Node[];
-    edges: Edge[];
-    lastAccessed: number;
-  }>();
-
-  private readonly maxCacheSize = 5;
-  private readonly cacheTtl = 1000 * 60 * 10; // 10 minutes
-
   constructor(projectRoot: string, db: DatabaseConnection) {
     this.projectRoot = projectRoot;
-    this.db = db;
     this.queries = new SharedStorageQueries(db.getDb());
     this.currentBranch = getCurrentBranch(projectRoot);
   }
@@ -145,6 +132,7 @@ export class OptimizedBranchManager {
 
       for (let i = 0; i < changedFiles.length; i++) {
         const file = changedFiles[i];
+        if (!file) continue;
 
         // Report progress
         options.onProgress?.({
@@ -444,63 +432,6 @@ export class OptimizedBranchManager {
       '.hpp': 'cpp',
     };
     return languageMap[ext] ?? 'unknown';
-  }
-
-  // ===========================================================================
-  // Cache Management
-  // ===========================================================================
-
-  /**
-   * Get cached branch data
-   */
-  private getCachedBranch(branch: string): { nodes: Node[]; edges: Edge[] } | null {
-    const cached = this.branchCache.get(branch);
-    if (!cached) return null;
-
-    // Check TTL
-    if (Date.now() - cached.lastAccessed > this.cacheTtl) {
-      this.branchCache.delete(branch);
-      return null;
-    }
-
-    // Update last accessed
-    cached.lastAccessed = Date.now();
-    return cached;
-  }
-
-  /**
-   * Cache branch data
-   */
-  private cacheBranch(branch: string, nodes: Node[], edges: Edge[]): void {
-    // Implement LRU eviction
-    if (this.branchCache.size >= this.maxCacheSize) {
-      let oldestBranch: string | null = null;
-      let oldestTime = Infinity;
-
-      for (const [b, data] of this.branchCache) {
-        if (data.lastAccessed < oldestTime) {
-          oldestTime = data.lastAccessed;
-          oldestBranch = b;
-        }
-      }
-
-      if (oldestBranch) {
-        this.branchCache.delete(oldestBranch);
-      }
-    }
-
-    this.branchCache.set(branch, {
-      nodes,
-      edges,
-      lastAccessed: Date.now(),
-    });
-  }
-
-  /**
-   * Clear branch cache
-   */
-  clearCache(): void {
-    this.branchCache.clear();
   }
 }
 

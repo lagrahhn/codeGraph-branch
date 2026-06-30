@@ -6,10 +6,8 @@
 
 import { Command } from 'commander';
 import * as path from 'path';
-import * as fs from 'fs';
-import { getCodeGraphDir, isInitialized } from '../directory';
+import { isInitialized } from '../directory';
 import { createShimmerProgress } from '../ui/shimmer-progress';
-import { getGlyphs } from '../ui/glyphs';
 
 // ANSI Color Helpers
 const colors = {

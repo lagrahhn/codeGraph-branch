@@ -73,7 +73,8 @@ export function computeFileHashFromBuffer(filePath: string, buffer: Buffer): str
  */
 export function extractPathHash(hash: string): string | null {
   const parts = hash.split('_');
-  return parts.length === 2 ? parts[0] : null;
+  if (parts.length !== 2) return null;
+  return parts[0] ?? null;
 }
 
 /**
@@ -84,7 +85,8 @@ export function extractPathHash(hash: string): string | null {
  */
 export function extractContentHash(hash: string): string | null {
   const parts = hash.split('_');
-  return parts.length === 2 ? parts[1] : null;
+  if (parts.length !== 2) return null;
+  return parts[1] ?? null;
 }
 
 /**

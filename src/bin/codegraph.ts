@@ -28,6 +28,7 @@ import * as fs from 'fs';
 import { getCodeGraphDir, isInitialized } from '../directory';
 import { detectWorktreeIndexMismatch, worktreeMismatchWarning } from '../sync/worktree';
 import { createShimmerProgress } from '../ui/shimmer-progress';
+import { registerBranchOptimizationCommands } from './branch-optimization';
 import { getGlyphs } from '../ui/glyphs';
 
 import { buildNode25BlockBanner, buildNodeTooOldBanner, MIN_NODE_MAJOR } from './node-version-check';
@@ -1943,12 +1944,7 @@ program
 // Branch Optimization Commands
 // =============================================================================
 
-// Import and register branch optimization commands
-import('./branch-optimization').then(({ registerBranchOptimizationCommands }) => {
-  registerBranchOptimizationCommands(program);
-}).catch((err) => {
-  console.error('Failed to load branch optimization commands:', err);
-});
+registerBranchOptimizationCommands(program);
 
 // Parse and run
 program.parse();

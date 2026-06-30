@@ -12,6 +12,8 @@ export interface IndexProgress {
   phase: string;
   current: number;
   total: number;
+  /** Optional label for the item currently being processed */
+  currentFile?: string;
 }
 
 export interface ShimmerProgress {
