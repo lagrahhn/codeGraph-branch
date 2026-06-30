@@ -44,10 +44,3 @@ Remove-Item $Archive -ErrorAction SilentlyContinue
 Compress-Archive -Path $Stage -DestinationPath $Archive -Force
 $sizeMb = [math]::Round((Get-Item $Archive).Length / 1MB, 1)
 Write-Host "[bundle] wrote $Archive ($sizeMb MB)"
-
-Push-Location $Root
-npm pack --pack-destination $Out | Out-Null
-Pop-Location
-
-Write-Host "[bundle] npm pack -> $Out"
-Get-ChildItem $Out | ForEach-Object { Write-Host "  $($_.Name) ($([math]::Round($_.Length/1MB,2)) MB)" }
