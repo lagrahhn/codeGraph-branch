@@ -29,6 +29,7 @@ import { getCodeGraphDir, isInitialized } from '../directory';
 import { detectWorktreeIndexMismatch, worktreeMismatchWarning } from '../sync/worktree';
 import { createShimmerProgress } from '../ui/shimmer-progress';
 import { registerBranchOptimizationCommands } from './branch-optimization';
+import { cliDesc } from './cli-desc';
 import { getGlyphs } from '../ui/glyphs';
 
 import { buildNode25BlockBanner, buildNodeTooOldBanner, MIN_NODE_MAJOR } from './node-version-check';
@@ -149,7 +150,10 @@ const chalk = {
 
 program
   .name('codegraph')
-  .description('Code intelligence and knowledge graph for any codebase')
+  .description(cliDesc(
+    'Code intelligence and knowledge graph for any codebase',
+    '面向任意代码库的智能代码知识图谱',
+  ))
   .version(packageJson.version);
 
 // =============================================================================
@@ -428,7 +432,7 @@ function writeErrorLog(projectPath: string, errors: Array<{ message: string; fil
  */
 program
   .command('init [path]')
-  .description('Initialize CodeGraph in a project directory')
+  .description(cliDesc('Initialize CodeGraph in a project directory', '在项目中初始化 CodeGraph'))
   .option('-i, --index', 'Run initial indexing after initialization')
   .option('-v, --verbose', 'Show detailed worker lifecycle and memory info')
   .action(async (pathArg: string | undefined, options: { index?: boolean; verbose?: boolean }) => {
@@ -493,7 +497,7 @@ program
  */
 program
   .command('uninit [path]')
-  .description('Remove CodeGraph from a project (deletes .codegraph/ directory)')
+  .description(cliDesc('Remove CodeGraph from a project (deletes .codegraph/ directory)', '从项目中移除 CodeGraph（删除 .codegraph/ 目录）'))
   .option('-f, --force', 'Skip confirmation prompt')
   .action(async (pathArg: string | undefined, options: { force?: boolean }) => {
     const projectPath = resolveProjectPath(pathArg);
@@ -547,7 +551,7 @@ program
  */
 program
   .command('index [path]')
-  .description('Index all files in the project')
+  .description(cliDesc('Index all files in the project', '索引项目中的所有文件'))
   .option('-f, --force', 'Force full re-index even if already indexed')
   .option('-q, --quiet', 'Suppress progress output')
   .option('-v, --verbose', 'Show detailed worker lifecycle and memory info')
@@ -616,7 +620,7 @@ program
  */
 program
   .command('sync [path]')
-  .description('Sync changes since last index')
+  .description(cliDesc('Sync changes since last index', '同步自上次索引以来的变更'))
   .option('-q, --quiet', 'Suppress output (for git hooks)')
   .action(async (pathArg: string | undefined, options: { quiet?: boolean }) => {
     const projectPath = resolveProjectPath(pathArg);
@@ -678,7 +682,7 @@ program
  */
 program
   .command('status [path]')
-  .description('Show index status and statistics')
+  .description(cliDesc('Show index status and statistics', '显示索引状态与统计信息'))
   .option('-j, --json', 'Output as JSON')
   .action(async (pathArg: string | undefined, options: { json?: boolean }) => {
     const projectPath = resolveProjectPath(pathArg);
@@ -821,7 +825,7 @@ program
  */
 program
   .command('query <search>')
-  .description('Search for symbols in the codebase')
+  .description(cliDesc('Search for symbols in the codebase', '在代码库中搜索符号'))
   .option('-p, --path <path>', 'Project path')
   .option('-l, --limit <number>', 'Maximum results', '10')
   .option('-k, --kind <kind>', 'Filter by node kind (function, class, etc.)')
@@ -893,7 +897,7 @@ program
  */
 program
   .command('files')
-  .description('Show project file structure from the index')
+  .description(cliDesc('Show project file structure from the index', '显示索引中的项目文件结构'))
   .option('-p, --path <path>', 'Project path')
   .option('--filter <dir>', 'Filter to files under this directory')
   .option('--pattern <glob>', 'Filter files matching this glob pattern')
@@ -1100,7 +1104,7 @@ function printFileTree(
  */
 program
   .command('context <task>')
-  .description('Build context for a task (outputs markdown)')
+  .description(cliDesc('Build context for a task (outputs markdown)', '为任务构建上下文（输出 Markdown）'))
   .option('-p, --path <path>', 'Project path')
   .option('-n, --max-nodes <number>', 'Maximum nodes to include', '50')
   .option('-c, --max-code <number>', 'Maximum code blocks', '10')
@@ -1146,7 +1150,7 @@ program
  */
 program
   .command('serve')
-  .description('Start CodeGraph as an MCP server for AI assistants')
+  .description(cliDesc('Start CodeGraph as an MCP server for AI assistants', '以 MCP 服务器模式启动，供 AI 助手使用'))
   .option('-p, --path <path>', 'Project path (optional for MCP mode, uses rootUri from client)')
   .option('--mcp', 'Run as MCP server (stdio transport)')
   .option('--no-watch', 'Disable the file watcher (no auto-sync; useful on slow filesystems like WSL2 /mnt drives)')
@@ -1203,7 +1207,7 @@ program
  */
 program
   .command('unlock [path]')
-  .description('Remove a stale lock file that is blocking indexing')
+  .description(cliDesc('Remove a stale lock file that is blocking indexing', '移除阻塞索引的过期锁文件'))
   .action(async (pathArg: string | undefined) => {
     const projectPath = resolveProjectPath(pathArg);
 
@@ -1237,7 +1241,7 @@ program
  */
 program
   .command('callers <symbol>')
-  .description('Find all functions/methods that call a specific symbol')
+  .description(cliDesc('Find all functions/methods that call a specific symbol', '查找调用指定符号的所有函数/方法'))
   .option('-p, --path <path>', 'Project path')
   .option('-l, --limit <number>', 'Maximum results', '20')
   .option('-j, --json', 'Output as JSON')
@@ -1316,7 +1320,7 @@ program
  */
 program
   .command('callees <symbol>')
-  .description('Find all functions/methods that a specific symbol calls')
+  .description(cliDesc('Find all functions/methods that a specific symbol calls', '查找指定符号调用的所有函数/方法'))
   .option('-p, --path <path>', 'Project path')
   .option('-l, --limit <number>', 'Maximum results', '20')
   .option('-j, --json', 'Output as JSON')
@@ -1394,7 +1398,7 @@ program
  */
 program
   .command('impact <symbol>')
-  .description('Analyze what code is affected by changing a symbol')
+  .description(cliDesc('Analyze what code is affected by changing a symbol', '分析修改指定符号会影响哪些代码'))
   .option('-p, --path <path>', 'Project path')
   .option('-d, --depth <number>', 'Traversal depth', '2')
   .option('-j, --json', 'Output as JSON')
@@ -1498,7 +1502,7 @@ program
  */
 program
   .command('affected [files...]')
-  .description('Find test files affected by changed source files')
+  .description(cliDesc('Find test files affected by changed source files', '查找受源文件变更影响的测试文件'))
   .option('-p, --path <path>', 'Project path')
   .option('--stdin', 'Read file list from stdin (one per line)')
   .option('-d, --depth <number>', 'Max dependency traversal depth', '5')
@@ -1629,7 +1633,10 @@ program
  */
 program
   .command('install')
-  .description('Install codegraph MCP server into one or more agents (Claude Code, Cursor, Codex CLI, opencode, Hermes Agent)')
+  .description(cliDesc(
+    'Install codegraph MCP server into one or more agents (Claude Code, Cursor, Codex CLI, opencode, Hermes Agent)',
+    '将 CodeGraph MCP 服务器安装到一个或多个 AI 助手（Claude Code、Cursor、Codex CLI、opencode、Hermes Agent）',
+  ))
   .option('-t, --target <ids>', 'Target agent(s): comma-separated ids, or "auto"|"all"|"none". Default: prompt')
   .option('-l, --location <where>', 'Install location: "global" or "local". Default: prompt')
   .option('-y, --yes', 'Non-interactive: defaults to --location=global --target=auto, auto-allow on')
@@ -1696,7 +1703,10 @@ program
  */
 program
   .command('uninstall')
-  .description('Remove codegraph from your agents (Claude Code, Cursor, Codex CLI, opencode, Hermes Agent)')
+  .description(cliDesc(
+    'Remove codegraph from your agents (Claude Code, Cursor, Codex CLI, opencode, Hermes Agent)',
+    '从 AI 助手中卸载 CodeGraph（Claude Code、Cursor、Codex CLI、opencode、Hermes Agent）',
+  ))
   .option('-t, --target <ids>', 'Target agent(s): comma-separated ids, or "all". Default: all')
   .option('-l, --location <where>', 'Uninstall location: "global" or "local". Default: prompt')
   .option('-y, --yes', 'Non-interactive: defaults to --location=global --target=all')
@@ -1737,7 +1747,10 @@ program
  */
 program
   .command('branch [action] [name]')
-  .description('Manage per-branch indexes. Actions: switch, prune (no action = show status)')
+  .description(cliDesc(
+    'Manage per-branch indexes. Actions: switch, prune (no action = show status)',
+    '管理按分支存储的索引；操作：switch、prune，无参数则显示状态',
+  ))
   .option('-a, --all', 'With prune: remove all non-active branches')
   .option('-y, --yes', 'Skip confirmation prompts')
   .option('-j, --json', 'Output as JSON')

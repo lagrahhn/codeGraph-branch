@@ -8,6 +8,7 @@ import { Command } from 'commander';
 import * as path from 'path';
 import { isInitialized } from '../directory';
 import { createShimmerProgress } from '../ui/shimmer-progress';
+import { cliDesc } from './cli-desc';
 
 // ANSI Color Helpers
 const colors = {
@@ -84,7 +85,10 @@ export function registerBranchOptimizationCommands(program: Command): void {
    */
   program
     .command('branch-optimize')
-    .description('Optimize branch storage with content-addressable shared storage')
+    .description(cliDesc(
+      'Optimize branch storage with content-addressable shared storage',
+      '使用内容寻址共享存储优化分支存储',
+    ))
     .option('-m, --migrate', 'Migrate existing branches to optimized storage')
     .option('-c, --cleanup', 'Remove old branch databases after migration')
     .option('-d, --dry-run', 'Show what would be migrated without making changes')
@@ -206,7 +210,7 @@ export function registerBranchOptimizationCommands(program: Command): void {
    */
   program
     .command('branch-stats')
-    .description('Show detailed branch storage statistics')
+    .description(cliDesc('Show detailed branch storage statistics', '显示分支存储详细统计'))
     .option('-j, --json', 'Output as JSON')
     .action(async (opts: { json?: boolean }) => {
       const projectPath = resolveProjectPath();
@@ -273,7 +277,7 @@ export function registerBranchOptimizationCommands(program: Command): void {
    */
   program
     .command('branch-analyze')
-    .description('Analyze branch storage efficiency')
+    .description(cliDesc('Analyze branch storage efficiency', '分析分支存储效率'))
     .option('-j, --json', 'Output as JSON')
     .action(async (opts: { json?: boolean }) => {
       const projectPath = resolveProjectPath();
