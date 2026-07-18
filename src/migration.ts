@@ -179,14 +179,14 @@ async function migrateBranch(
   filesMigrated: number;
 }> {
   // Open old branch database
-  const oldDb = new DatabaseConnection(branchInfo.dbPath);
-  oldDb.open();
+  const oldDb = DatabaseConnection.open(branchInfo.dbPath);
 
   try {
     // Get all nodes from old database
-    const nodes = oldDb.query<Node>('SELECT * FROM nodes');
-    const edges = oldDb.query<Edge>('SELECT * FROM edges');
-    const files = oldDb.query<FileRecord>('SELECT * FROM files');
+    const db = oldDb.getDb();
+    const nodes = db.prepare('SELECT * FROM nodes').all() as Node[];
+    const edges = db.prepare('SELECT * FROM edges').all() as Edge[];
+    const files = db.prepare('SELECT * FROM files').all() as FileRecord[];
 
     if (!dryRun) {
       // Insert nodes into shared storage

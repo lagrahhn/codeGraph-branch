@@ -1,0 +1,42 @@
+{
+  "mcpServers": {
+    "mysql": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-server-mysql@latest"
+      ],
+      "env": {
+        "MYSQL_HOST": "rds0710650me01y6d3og732.mysql.rds.aliyuncs.com",
+        "MYSQL_PORT": "3306",
+        "MYSQL_USER": "yunker",
+        "MYSQL_PASS": "xlfK!MPaNX!7U@R2",
+        "MYSQL_DB": "yunketest"
+      }
+    },
+    "nacos": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@vinkugor/nacos-mcp"
+      ],
+      "env": {
+        "NACOS_HOST": "mse-3a1e9f12-nacos-ans.mse.aliyuncs.com:8848",
+        "NACOS_NAMESPACE": "test",
+        "NACOS_USERNAME": "nacos",
+        "NACOS_PASSWORD": "nacos"
+      }
+    },
+    "elasticsearch": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-server-elasticsearch@latest"
+      ],
+      "env": {
+        "ES_HOST": "your-es-host",
+        "ES_PORT": "9200"
+      }
+    }
+  }
+}

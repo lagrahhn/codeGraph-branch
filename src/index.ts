@@ -22,7 +22,7 @@ import {
   BuildContextOptions,
   FindRelevantContextOptions,
 } from './types';
-import { DatabaseConnection, getDatabasePath } from './db';
+import { DatabaseConnection, getDatabasePath, SqliteDatabase } from './db';
 import { QueryBuilder } from './db/queries';
 import {
   isInitialized,
@@ -118,6 +118,9 @@ export interface OpenOptions {
 
   /** Whether to run in read-only mode */
   readOnly?: boolean;
+
+  /** Branch to open (overrides auto-detection) */
+  branch?: string;
 }
 
 /**
@@ -183,6 +186,20 @@ export class CodeGraph {
       queries,
       this.traverser
     );
+  }
+
+  /**
+   * Get the underlying SQLite database
+   */
+  getDb(): SqliteDatabase {
+    return this.db.getDb();
+  }
+
+  /**
+   * Get the database connection wrapper
+   */
+  getDbConnection(): DatabaseConnection {
+    return this.db;
   }
 
   // ===========================================================================
@@ -306,8 +323,8 @@ export class CodeGraph {
       throw new Error(`Invalid CodeGraph directory: ${validation.errors.join(', ')}`);
     }
 
-    // Detect current git branch
-    const branch = getCurrentBranch(resolvedRoot);
+    // Use provided branch or detect current git branch
+    const branch = options.branch || getCurrentBranch(resolvedRoot);
 
     let dbPath: string;
     if (branch) {

@@ -167,7 +167,6 @@ export function registerBranchOptimizationCommands(program: Command): void {
             phase: 'migrating',
             current: migratedCount,
             total: branches.length,
-            currentFile: branch.dirName,
           });
 
           // TODO: Implement actual migration logic

@@ -253,7 +253,7 @@ class MultiDbStorageStrategy implements IBranchStorageStrategy {
         readOnly: false,
       });
 
-      this.currentDb = cg.getDb();
+      this.currentDb = cg.getDbConnection();
       this.currentBranch = branch;
       setActiveBranch(this.projectRoot, branch);
 
